@@ -55,8 +55,8 @@ static void __exit  my_exit(void) {
 }
 
 static int dummy_module_file_open (struct inode *inp, struct file *filp) {
-	pr_info("dummy_module opened device\n");
         struct dummy_module_device_struct *p;
+	pr_info("dummy_module opened device\n");
         p = dummy_module_find_device_struct(inp);
         if(!p) {
                 pr_err("dummy_module can't find dummy device struct\n");
@@ -80,7 +80,7 @@ ssize_t dummy_module_file_read (struct file *filp, char __user *buffer, size_t s
         limit = p->alloc_memory - *offset;
         for(i = 0; i < size && i < limit; i++) {
                 written = copy_to_user(&buffer[i], &(p->data_pointer[*offset + i]), 1);
-                if(!written) {
+                if(written) {
                         pr_err("Error copy_to_user\n");
                         return -1;
                 }
@@ -91,7 +91,24 @@ ssize_t dummy_module_file_read (struct file *filp, char __user *buffer, size_t s
 }
 
 ssize_t dummy_module_file_write (struct file *filp, const char __user *buffer, size_t size, loff_t *offset) {
-	return 0;
+        int available_space, i;
+        unsigned long written;
+        struct dummy_module_device_struct *p;
+        p = filp->private_data;
+        down(&p->write_sem);
+        available_space = p->alloc_memory - *offset;
+        for(i = 0; i < available_space && i < size; i++) {
+                written = copy_from_user(&(p->data_pointer[*offset + i]), &buffer[i], 1);
+                if(written) {
+                        pr_err("Error copy_from_user\n");
+                        up(&p->write_sem);
+                        return -1;
+                }
+        }
+        *offset += i;
+        pr_info("Written %d bytes\n",i);
+        up(&p->write_sem);
+	return i;
 }
 
 
