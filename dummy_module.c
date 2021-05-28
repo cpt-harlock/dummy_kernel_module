@@ -5,6 +5,8 @@
 #include <linux/types.h>
 #include <linux/cdev.h>
 #include <linux/uaccess.h>
+#include <linux/slab.h>
+#include "dummy_module.h"
 
 static int dummy_module_file_open (struct inode *, struct file *);
 static int dummy_module_file_release (struct inode *, struct file *);
@@ -19,8 +21,10 @@ static struct file_operations fops =  {
 };
 static struct cdev cdevs;
 static dev_t dev;
+static struct dummy_module_device_struct dummy_module_device_array[DUMMY_MODULE_NOF_DEVICES];
 
 static int __init  my_init(void) {
+        int i;
 	pr_info("Hello dummy_module\n");
 	//allocate char device region
 	if(alloc_chrdev_region(&dev, 0, 1, "dummy_module")) {
@@ -32,6 +36,13 @@ static int __init  my_init(void) {
 	if(cdev_add(&cdevs, dev, 1)) {
 		pr_err("Error creating new char device\n");
 	}
+        for(i = 0; i < DUMMY_MODULE_NOF_DEVICES; i++) {
+                dummy_module_device_array[i].alloc_memory = 1024;
+                dummy_module_device_array[i].data_pointer = kmalloc(1024, GFP_KERNEL);
+                memset(dummy_module_device_array[i].data_pointer,'a',1024);
+                sema_init(&(dummy_module_device_array[i].write_sem),1);
+                dummy_module_device_array[i].device_major_minor = MKDEV(MAJOR(dev),i);
+        }
 	pr_info("Correctly initialized dummy_module\n");
 	return 0;
 }
@@ -45,6 +56,13 @@ static void __exit  my_exit(void) {
 
 static int dummy_module_file_open (struct inode *inp, struct file *filp) {
 	pr_info("dummy_module opened device\n");
+        struct dummy_module_device_struct *p;
+        p = dummy_module_find_device_struct(inp);
+        if(!p) {
+                pr_err("dummy_module can't find dummy device struct\n");
+                return -1;
+        }
+        filp->private_data = p;
 	return 0;
 }
 static int dummy_module_file_release (struct inode *inp, struct file *filp) {
@@ -55,20 +73,35 @@ static int dummy_module_file_release (struct inode *inp, struct file *filp) {
 ssize_t dummy_module_file_read (struct file *filp, char __user *buffer, size_t size, loff_t *offset) {
 	int i;
 	unsigned long written;
-	for(i  = 0; i < size; i++) {
-		if((written = copy_to_user(&buffer[i], "a", 1))) {
-			pr_err("Error reading device");
-			pr_err("Size %lu i %d written %lu", size, i, written);
-			return -1;
-		}
-	}
-	*offset += size;
-	pr_info("Read %lu bytes",size);
-	return size;
+        struct dummy_module_device_struct *p;
+        int limit;
+        p = filp->private_data;
+        //residual memory
+        limit = p->alloc_memory - *offset;
+        for(i = 0; i < size && i < limit; i++) {
+                written = copy_to_user(&buffer[i], &(p->data_pointer[*offset + i]), 1);
+                if(!written) {
+                        pr_err("Error copy_to_user\n");
+                        return -1;
+                }
+        }
+	*offset += i;
+	pr_info("Read %i bytes",i);
+	return i;
 }
 
 ssize_t dummy_module_file_write (struct file *filp, const char __user *buffer, size_t size, loff_t *offset) {
 	return 0;
+}
+
+
+struct dummy_module_device_struct* dummy_module_find_device_struct(struct inode *inp) {
+        int i;
+        i = MINOR(inp->i_rdev);
+        if(i >= DUMMY_MODULE_NOF_DEVICES)
+                return NULL;
+        return &dummy_module_device_array[i];
+                
 }
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Harlock");
