@@ -27,13 +27,13 @@ static int __init  my_init(void) {
         int i;
 	pr_info("Hello dummy_module\n");
 	//allocate char device region
-	if(alloc_chrdev_region(&dev, 0, 1, "dummy_module")) {
+	if(alloc_chrdev_region(&dev, 0, DUMMY_MODULE_NOF_DEVICES, "dummy_module")) {
 		pr_err("Error allocating chrdev region\n");
 		return -1;
 	}
 	//create new device
 	cdev_init(&cdevs, &fops);	
-	if(cdev_add(&cdevs, dev, 1)) {
+	if(cdev_add(&cdevs, dev, DUMMY_MODULE_NOF_DEVICES)) {
 		pr_err("Error creating new char device\n");
 	}
         for(i = 0; i < DUMMY_MODULE_NOF_DEVICES; i++) {
@@ -49,7 +49,7 @@ static int __init  my_init(void) {
 
 static void __exit  my_exit(void) {
 	cdev_del(&cdevs);
-	unregister_chrdev_region(dev, 1);
+	unregister_chrdev_region(dev, DUMMY_MODULE_NOF_DEVICES);
 	pr_info("Goodbye dummy_module\n");
 	return;
 }
