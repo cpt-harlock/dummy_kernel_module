@@ -2,8 +2,13 @@
 #define _DUMMY_MODULE_H
 
 #include <linux/semaphore.h>
+#include <linux/ioctl.h>
 
 #define DUMMY_MODULE_NOF_DEVICES 5
+#define DUMMY_MODULE_MAGIC 'j'
+
+#define DUMMY_MODULE_GET_PR_INFO _IOWR(DUMMY_MODULE_MAGIC,0,int)
+#define DUMMY_MODULE_MAX_IO_CMD 0
 
 struct dummy_module_device_struct {
         //device write semaphore

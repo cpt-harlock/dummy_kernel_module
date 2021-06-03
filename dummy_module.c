@@ -1,3 +1,6 @@
+#include "asm-generic/errno-base.h"
+#include "asm-generic/ioctl.h"
+#include "asm/uaccess.h"
 #include "linux/printk.h"
 #include <linux/init.h>
 #include <linux/module.h>
@@ -10,6 +13,7 @@
 #include "linux/semaphore.h"
 #include <linux/completion.h>
 #include <linux/proc_fs.h>
+#include <linux/ioctl.h>
 
 //device file operations
 static int dummy_module_file_open (struct inode *, struct file *);
@@ -21,6 +25,7 @@ static int dummy_module_procfs_open (struct inode *, struct file *);
 static int dummy_module_procfs_release (struct inode *, struct file *);
 ssize_t dummy_module_procfs_read (struct file *, char __user *, size_t, loff_t *);
 ssize_t dummy_module_procfs_write (struct file *, const char __user *, size_t, loff_t *);
+long dummy_module_procfs_unlocked_ioctl (struct file *, unsigned int, unsigned long);
 //procfs string
 static char *dummy_module_procfs_string = "Hello World! This is procfs filesystem example";
 //procfs dir entry pointer
@@ -35,7 +40,8 @@ static struct file_operations proc_fops =  {
 	.open = dummy_module_procfs_open,
 	.release = dummy_module_procfs_release,
 	.write = dummy_module_procfs_write,
-	.read = dummy_module_procfs_read
+	.read = dummy_module_procfs_read,
+	.compat_ioctl = dummy_module_procfs_unlocked_ioctl
 };
 static struct cdev cdevs;
 static dev_t dev;
@@ -169,6 +175,27 @@ ssize_t dummy_module_procfs_write (struct file *filp, const char __user *buffer,
 	return size;
 }
 
+long dummy_module_procfs_unlocked_ioctl (struct file *filp, unsigned int cmd, unsigned long arg) {
+	//The Long Voyage
+	int err;
+	//check magic
+	if(_IOC_TYPE(cmd) != DUMMY_MODULE_MAGIC) {
+		pr_info("Wrong magic number\n");
+		return -ENOTTY;
+	}
+	//check cmd number
+	if(_IOC_NR(cmd) > DUMMY_MODULE_MAX_IO_CMD) {
+		pr_info("Wrong command number\n");
+		return -ENOTTY;
+	}
+	//check access
+	if(_IOC_DIR(cmd) & _IOC_READ)
+		err = !access_ok(VERIFY_WRITE, (void __user *)arg, _IOC_SIZE(cmd));
+	if(_IOC_DIR(cmd) & _IOC_WRITE)
+		err = !access_ok(VERIFY_READ, (void __user *)arg, _IOC_SIZE(cmd));
+	if(err) return -EFAULT;
+	return 0;
+}
 struct dummy_module_device_struct* dummy_module_find_device_struct(struct inode *inp) {
         int i;
         i = MINOR(inp->i_rdev);
