@@ -12,6 +12,6 @@ load:
 	insmod ./$(TARGET_MODULE).ko
 unload:
 	rmmod ./$(TARGET_MODULE).ko
-ioctl:
+ioctl: ioctl.c
 	gcc ioctl.c -o ioctl
 endif	

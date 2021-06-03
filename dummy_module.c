@@ -1,6 +1,5 @@
 #include "asm-generic/errno-base.h"
 #include "asm-generic/ioctl.h"
-#include "asm/uaccess.h"
 #include "linux/printk.h"
 #include <linux/init.h>
 #include <linux/module.h>
@@ -14,7 +13,7 @@
 #include <linux/completion.h>
 #include <linux/proc_fs.h>
 #include <linux/ioctl.h>
-
+#include <linux/sched.h>
 //device file operations
 static int dummy_module_file_open (struct inode *, struct file *);
 static int dummy_module_file_release (struct inode *, struct file *);
@@ -36,12 +35,12 @@ static struct file_operations fops =  {
 	.write = dummy_module_file_write,
 	.read = dummy_module_file_read
 };
-static struct file_operations proc_fops =  {
-	.open = dummy_module_procfs_open,
-	.release = dummy_module_procfs_release,
-	.write = dummy_module_procfs_write,
-	.read = dummy_module_procfs_read,
-	.compat_ioctl = dummy_module_procfs_unlocked_ioctl
+static struct proc_ops proc_fops =  {
+	.proc_open = dummy_module_procfs_open,
+	.proc_release = dummy_module_procfs_release,
+	.proc_write = dummy_module_procfs_write,
+	.proc_read = dummy_module_procfs_read,
+	.proc_ioctl = dummy_module_procfs_unlocked_ioctl
 };
 static struct cdev cdevs;
 static dev_t dev;
@@ -148,9 +147,11 @@ ssize_t dummy_module_file_write (struct file *filp, const char __user *buffer, s
 }
 
 static int dummy_module_procfs_open (struct inode *inp, struct file *filp) {
+        pr_info("/proc/dummy_module open\n");
 	return 0;
 }
 static int dummy_module_procfs_release (struct inode *inp, struct file *filp) {
+        pr_info("/proc/dummy_module close\n");
 	return 0;
 }
 ssize_t dummy_module_procfs_read (struct file *filp, char __user *buffer, size_t size, loff_t *offset) {
@@ -177,7 +178,9 @@ ssize_t dummy_module_procfs_write (struct file *filp, const char __user *buffer,
 
 long dummy_module_procfs_unlocked_ioctl (struct file *filp, unsigned int cmd, unsigned long arg) {
 	//The Long Voyage
-	int err;
+	int err = 0, pid;
+        struct task_struct *found_proc;
+        struct list_head *list_item_pointer;
 	//check magic
 	if(_IOC_TYPE(cmd) != DUMMY_MODULE_MAGIC) {
 		pr_info("Wrong magic number\n");
@@ -189,11 +192,27 @@ long dummy_module_procfs_unlocked_ioctl (struct file *filp, unsigned int cmd, un
 		return -ENOTTY;
 	}
 	//check access
-	if(_IOC_DIR(cmd) & _IOC_READ)
-		err = !access_ok(VERIFY_WRITE, (void __user *)arg, _IOC_SIZE(cmd));
-	if(_IOC_DIR(cmd) & _IOC_WRITE)
-		err = !access_ok(VERIFY_READ, (void __user *)arg, _IOC_SIZE(cmd));
-	if(err) return -EFAULT;
+	if(_IOC_DIR(cmd) & _IOC_READ || _IOC_DIR(cmd) & _IOC_WRITE) {
+		err = !access_ok((void __user *)arg, _IOC_SIZE(cmd));
+        }
+	if(err) {
+                pr_info("Wrong user memory pointer\n"); 
+                return -EFAULT;
+        }
+        pr_info("Correctly executed ioctl\n"); 
+        //getting pid 
+        copy_from_user((void*)&pid, (void*)arg, sizeof(int));
+        pr_info("Pid %d\n",pid);
+        //getting process info
+        found_proc = pid_task(find_vpid(pid), PIDTYPE_PID);
+        if(!found_proc) {
+                pr_err("Process not found\n");
+                return -EFAULT;
+        }
+        //write smthg into user arg
+        list_for_each(list_item_pointer, &(found_proc->children)) {
+                pr_info("Child process id %u\n", container_of(list_item_pointer, struct task_struct, children)->tgid);
+        }
 	return 0;
 }
 struct dummy_module_device_struct* dummy_module_find_device_struct(struct inode *inp) {

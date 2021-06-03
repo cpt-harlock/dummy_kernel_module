@@ -1,3 +1,7 @@
+*.mod
+*.swp
+*.pch
+*.tmp
 .*.cmd
 .tmp_versions
 .cache
