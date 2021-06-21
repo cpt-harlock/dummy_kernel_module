@@ -1,13 +1,13 @@
 #!/bin/bash
 
 function create { 
-	for x in {0..4}; do 
+	for x in {0..9}; do 
 		sudo mknod /dev/dummy_module${x} c `cat /proc/devices | egrep dummy | cut -d" " -f1` ${x};
 		sudo chown harlock:harlock /dev/dummy_module${x}
 	done
 }
 function delete {
-	for x in {0..4}; do 
+	for x in {0..9}; do 
 		sudo rm -drf /dev/dummy_module${x}
 	done
 }

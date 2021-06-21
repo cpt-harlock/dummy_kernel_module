@@ -14,4 +14,6 @@ unload:
 	rmmod ./$(TARGET_MODULE).ko
 ioctl: ioctl.c
 	gcc ioctl.c -o ioctl
+test_nb: test_nb.c
+	gcc test_nb.c -o test_nb
 endif	
