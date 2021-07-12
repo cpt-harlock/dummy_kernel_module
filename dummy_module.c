@@ -34,6 +34,7 @@ ssize_t dummy_module_pipe_read (struct file *, char __user *, size_t, loff_t *);
 ssize_t dummy_module_pipe_write (struct file *, const char __user *, size_t, loff_t *);
 int dummy_module_pipe_freespace(struct dummy_module_pipe_struct*, struct file*);
 uint32_t get_free_space(struct dummy_module_pipe_struct*);
+__poll_t dummy_module_pipe_poll (struct file *, struct poll_table_struct *);
 //procfs operations
 static int dummy_module_procfs_open (struct inode *, struct file *);
 static int dummy_module_procfs_release (struct inode *, struct file *);
@@ -49,7 +50,7 @@ static struct file_operations fops =  {
 	.open = dummy_module_file_open,
 	.release = dummy_module_file_release,
 	.write = dummy_module_file_write,
-	.read = dummy_module_file_read
+	.read = dummy_module_file_read,
 };
 static struct proc_ops proc_fops =  {
 	.proc_open = dummy_module_procfs_open,
@@ -63,7 +64,8 @@ static struct file_operations pipe_fops =  {
 	.open = dummy_module_pipe_open,
 	.release = dummy_module_pipe_release,
 	.write = dummy_module_pipe_write,
-	.read = dummy_module_pipe_read
+	.read = dummy_module_pipe_read,
+        .poll = dummy_module_pipe_poll
 };
 static struct cdev cdevs, cpipes;
 static dev_t dev;
@@ -195,7 +197,19 @@ ssize_t dummy_module_file_write (struct file *filp, const char __user *buffer, s
         up(&p->sem);
 	return i;
 }
-
+__poll_t dummy_module_pipe_poll (struct file *filp, struct poll_table_struct *ptsp) {
+        __poll_t ret = 0;
+        //retrieve device structure
+        struct dummy_module_pipe_struct* dmpsp = (struct dummy_module_pipe_struct*) filp->private_data;
+        //get semaphore
+        down(&dmpsp->sem);
+        if(dmpsp->start != dmpsp->end)
+                ret |= POLLRDNORM | POLLIN;
+        if(get_free_space(dmpsp))
+                ret |= POLLOUT | POLLWRNORM;
+        up(&dmpsp->sem);
+        return ret;
+}
 
 ssize_t dummy_module_pipe_read (struct file *filp, char __user *buffer, size_t count, loff_t *off) {
 	uint32_t read_count;
